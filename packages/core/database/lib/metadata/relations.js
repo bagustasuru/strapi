@@ -9,6 +9,8 @@ const _ = require('lodash/fp');
 const hasInversedBy = _.has('inversedBy');
 const hasMappedBy = _.has('mappedBy');
 
+const isPolymorphic = (attribute) =>
+  ['morphOne', 'morphMany', 'morphToOne', 'morphToMany'].includes(attribute.relation);
 const isOneToAny = (attribute) => ['oneToOne', 'oneToMany'].includes(attribute.relation);
 const isManyToAny = (attribute) => ['manyToMany', 'manyToOne'].includes(attribute.relation);
 const isAnyToOne = (attribute) => ['oneToOne', 'manyToOne'].includes(attribute.relation);
@@ -243,6 +245,16 @@ const createMorphToMany = (attributeName, attribute, meta, metadata) => {
       {
         name: `${joinTableName}_fk`,
         columns: [joinColumnName],
+      },
+      {
+        name: `${joinTableName}_order_index`,
+        columns: ['order'],
+        type: null,
+      },
+      {
+        name: `${joinTableName}_id_column_index`,
+        columns: [idColumnName],
+        type: null,
       },
     ],
     foreignKeys: [
@@ -554,7 +566,7 @@ const hasInverseOrderColumn = (attribute) => isBidirectional(attribute) && isMan
 
 module.exports = {
   createRelation,
-
+  isPolymorphic,
   isBidirectional,
   isOneToAny,
   isManyToAny,

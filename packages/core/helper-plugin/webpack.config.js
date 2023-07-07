@@ -1,6 +1,6 @@
-const webpack = require('webpack');
-const { ESBuildMinifyPlugin } = require('esbuild-loader');
 const browserslistToEsbuild = require('browserslist-to-esbuild');
+const { ESBuildMinifyPlugin } = require('esbuild-loader');
+const webpack = require('webpack');
 
 const packageJson = require('./package.json');
 
@@ -13,7 +13,7 @@ const nodeModules = [];
 
 /** @type {Omit<import('webpack').Configuration, 'output'>} */
 const baseConfig = {
-  entry: `${__dirname}/lib/src/index.js`,
+  entry: `${__dirname}/src/index.js`,
   externals: nodeModules,
   mode: process.env.NODE_ENV,
   devtool: process.env.NODE_ENV === 'production' ? false : 'eval-source-map',
@@ -47,10 +47,6 @@ const baseConfig = {
         },
       },
     ],
-  },
-  resolve: {
-    extensions: ['*', '.js'],
-    cacheWithContext: false,
   },
   plugins: [
     new webpack.EnvironmentPlugin({

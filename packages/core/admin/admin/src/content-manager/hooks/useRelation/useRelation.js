@@ -1,11 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+
+import { useCallbackRef, useFetchClient } from '@strapi/helper-plugin';
 import { useInfiniteQuery } from 'react-query';
 
-import { useFetchClient } from '@strapi/helper-plugin';
-
 import { normalizeRelations } from '../../components/RelationInputDataManager/utils';
-
-import { useCallbackRef } from '../useCallbackRef';
 
 export const useRelation = (cacheKey, { relation, search }) => {
   const [searchParams, setSearchParams] = useState({});

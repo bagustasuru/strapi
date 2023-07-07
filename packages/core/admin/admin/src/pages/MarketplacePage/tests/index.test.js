@@ -1,22 +1,20 @@
 import React from 'react';
-import {
-  render,
-  waitFor,
-  screen,
-  getByRole,
-  fireEvent,
-  queryByLabelText,
-  getByLabelText,
-} from '@testing-library/react';
+
+import { fixtures } from '@strapi/admin-test-utils';
+import { lightTheme, ThemeProvider } from '@strapi/design-system';
+import { TrackingProvider, useAppInfo, useTracking } from '@strapi/helper-plugin';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { createMemoryHistory } from 'history';
 import { IntlProvider } from 'react-intl';
 import { QueryClient, QueryClientProvider } from 'react-query';
-import { ThemeProvider, lightTheme } from '@strapi/design-system';
-import { useTracking, useAppInfos } from '@strapi/helper-plugin';
+import { Provider } from 'react-redux';
 import { Router } from 'react-router-dom';
-import { createMemoryHistory } from 'history';
+import { createStore } from 'redux';
+
 import useNavigatorOnLine from '../../../hooks/useNavigatorOnLine';
 import MarketPlacePage from '../index';
+
 import server from './server';
 
 const toggleNotification = jest.fn();
@@ -25,13 +23,12 @@ jest.mock('../../../hooks/useNavigatorOnLine', () => jest.fn(() => true));
 
 jest.mock('@strapi/helper-plugin', () => ({
   ...jest.requireActual('@strapi/helper-plugin'),
+  useTracking: jest.fn(() => ({ trackUsage: jest.fn() })),
   useNotification: jest.fn(() => {
     return toggleNotification;
   }),
-  pxToRem: jest.fn(),
   CheckPagePermissions: ({ children }) => children,
-  useTracking: jest.fn(() => ({ trackUsage: jest.fn() })),
-  useAppInfos: jest.fn(() => ({
+  useAppInfo: jest.fn(() => ({
     autoReload: true,
     dependencies: {
       '@strapi/plugin-documentation': '4.2.0',
@@ -42,38 +39,51 @@ jest.mock('@strapi/helper-plugin', () => ({
   })),
 }));
 
-const client = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: false,
+const setup = (props) => ({
+  ...render(<MarketPlacePage {...props} />, {
+    wrapper({ children }) {
+      const history = createMemoryHistory();
+      const client = new QueryClient({
+        defaultOptions: {
+          queries: {
+            retry: false,
+          },
+        },
+      });
+
+      return (
+        <Provider
+          store={createStore((state) => state, {
+            admin_app: { permissions: fixtures.permissions.app },
+          })}
+        >
+          <QueryClientProvider client={client}>
+            <TrackingProvider>
+              <IntlProvider locale="en" messages={{}} textComponent="span">
+                <ThemeProvider theme={lightTheme}>
+                  <Router history={history}>{children}</Router>
+                </ThemeProvider>
+              </IntlProvider>
+            </TrackingProvider>
+          </QueryClientProvider>
+        </Provider>
+      );
     },
-  },
+  }),
+
+  user: userEvent.setup(),
 });
 
-const history = createMemoryHistory();
-
-const App = (
-  <QueryClientProvider client={client}>
-    <IntlProvider locale="en" messages={{}} textComponent="span">
-      <ThemeProvider theme={lightTheme}>
-        <Router history={history}>
-          <MarketPlacePage />
-        </Router>
-      </ThemeProvider>
-    </IntlProvider>
-  </QueryClientProvider>
-);
-
 const waitForReload = async () => {
-  await waitFor(() => {
-    expect(screen.getByRole('heading', { name: /marketplace/i })).toBeInTheDocument();
-  });
+  await screen.findByTestId('marketplace-results');
 };
 
 describe('Marketplace page - layout', () => {
   beforeAll(() => server.listen());
 
-  afterEach(() => server.resetHandlers());
+  afterEach(() => {
+    server.resetHandlers();
+  });
 
   afterAll(() => server.close());
 
@@ -81,7 +91,7 @@ describe('Marketplace page - layout', () => {
     const trackUsage = jest.fn();
     useTracking.mockImplementationOnce(() => ({ trackUsage }));
 
-    const { container } = render(App);
+    const { container } = setup();
     await waitForReload();
     // Check snapshot
     expect(container.firstChild).toMatchSnapshot();
@@ -91,64 +101,55 @@ describe('Marketplace page - layout', () => {
     const offlineText = screen.queryByText('You are offline');
     expect(offlineText).toEqual(null);
     // Shows the sort button
-    const sortButton = screen.getByRole('button', { name: /Sort by/i });
+    const sortButton = screen.getByRole('combobox', { name: /Sort by/i });
     expect(sortButton).toBeVisible();
     // Shows the filters button
-    const filtersButton = screen.getByRole('button', { name: /filters/i });
+    const filtersButton = screen.getByText(/Filters/i).closest('button');
     expect(filtersButton).toBeVisible();
   });
 
   it('renders the offline layout', async () => {
     useNavigatorOnLine.mockReturnValueOnce(false);
-    render(App);
+    const { getByText } = setup();
 
-    const offlineText = screen.getByText('You are offline');
+    const offlineText = getByText('You are offline');
 
     expect(offlineText).toBeVisible();
   });
 
   it('disables the button and shows compatibility tooltip message when version provided', async () => {
-    client.clear();
-    const { getByTestId } = render(App);
-    await waitForReload();
+    const { findByTestId, findAllByTestId } = setup();
 
-    const alreadyInstalledCard = screen
-      .getAllByTestId('npm-package-card')
-      .find((div) => div.innerHTML.includes('Transformer'));
+    const alreadyInstalledCard = (await findAllByTestId('npm-package-card')).find((div) =>
+      div.innerHTML.includes('Transformer')
+    );
 
-    const button = getByRole(alreadyInstalledCard, 'button', { name: /copy install command/i });
+    const button = within(alreadyInstalledCard)
+      .getByText(/copy install command/i)
+      .closest('button');
 
     // User event throws an error that there are no pointer events
     fireEvent.mouseOver(button);
-    const tooltip = getByTestId(`tooltip-Transformer`);
-    await waitFor(() => {
-      expect(tooltip).toBeVisible();
-    });
+    const tooltip = await findByTestId('tooltip-Transformer');
     expect(button).toBeDisabled();
     expect(tooltip).toBeInTheDocument();
     expect(tooltip).toHaveTextContent('Update your Strapi version: "4.1.0" to: "4.0.7"');
   });
 
   it('shows compatibility tooltip message when no version provided', async () => {
-    client.clear();
-    const user = userEvent.setup();
-    const { getByTestId } = render(App);
-    await waitForReload();
+    const { findByTestId, findAllByTestId, user } = setup();
 
-    const alreadyInstalledCard = screen
-      .getAllByTestId('npm-package-card')
-      .find((div) => div.innerHTML.includes('Config Sync'));
+    const alreadyInstalledCard = (await findAllByTestId('npm-package-card')).find((div) =>
+      div.innerHTML.includes('Config Sync')
+    );
 
-    const button = getByRole(alreadyInstalledCard, 'button', {
-      name: /copy install command/i,
-    });
+    const button = within(alreadyInstalledCard)
+      .getByText(/copy install command/i)
+      .closest('button');
 
     user.hover(button);
-    const tooltip = getByTestId(`tooltip-Config Sync`);
+    const tooltip = await findByTestId(`tooltip-Config Sync`);
 
-    await waitFor(() => {
-      expect(tooltip).toBeVisible();
-    });
     expect(button).not.toBeDisabled();
     expect(tooltip).toBeInTheDocument();
     expect(tooltip).toHaveTextContent(
@@ -157,17 +158,16 @@ describe('Marketplace page - layout', () => {
   });
 
   it('handles production environment', async () => {
-    client.clear();
     // Simulate production environment
-    useAppInfos.mockImplementation(() => ({
+    useAppInfo.mockImplementation(() => ({
       autoReload: false,
       dependencies: {},
       useYarn: true,
     }));
 
-    render(App);
-
+    const { queryByText } = setup();
     await waitForReload();
+
     // Should display notification
     expect(toggleNotification).toHaveBeenCalledWith({
       type: 'info',
@@ -179,31 +179,26 @@ describe('Marketplace page - layout', () => {
     });
     expect(toggleNotification).toHaveBeenCalledTimes(1);
     // Should not show install buttons
-    expect(screen.queryByText(/copy install command/i)).toEqual(null);
+    expect(queryByText(/copy install command/i)).toEqual(null);
   });
 
   it('shows only downloads count and not github stars if there are no or 0 stars and no downloads available for any package', async () => {
-    client.clear();
-    render(App);
+    const { findByText, findAllByTestId, user } = setup();
 
-    await waitForReload();
+    const providersTab = (await findByText(/providers/i)).closest('button');
+    await user.click(providersTab);
 
-    const providersTab = screen.getByRole('tab', { name: /providers/i });
-    fireEvent.click(providersTab);
+    const nodeMailerCard = (await findAllByTestId('npm-package-card')).find((div) =>
+      div.innerHTML.includes('Nodemailer')
+    );
 
-    const nodeMailerCard = screen
-      .getAllByTestId('npm-package-card')
-      .find((div) => div.innerHTML.includes('Nodemailer'));
-
-    const githubStarsLabel = queryByLabelText(
-      nodeMailerCard,
+    const githubStarsLabel = within(nodeMailerCard).queryByLabelText(
       /this provider was starred \d+ on GitHub/i
     );
 
     expect(githubStarsLabel).toBe(null);
 
-    const downloadsLabel = getByLabelText(
-      nodeMailerCard,
+    const downloadsLabel = within(nodeMailerCard).getByLabelText(
       /this provider has \d+ weekly downloads/i
     );
     expect(downloadsLabel).toBeVisible();

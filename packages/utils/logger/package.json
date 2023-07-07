@@ -1,6 +1,6 @@
 {
   "name": "@strapi/logger",
-  "version": "4.7.1",
+  "version": "4.11.4",
   "description": "Strapi's logger",
   "homepage": "https://strapi.io",
   "bugs": {
@@ -23,16 +23,26 @@
       "url": "https://strapi.io"
     }
   ],
-  "main": "./lib/index.js",
-  "directories": {
-    "lib": "./lib"
-  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "./dist"
+  ],
   "scripts": {
-    "test": "echo \"no tests yet\""
+    "build": "run -T tsc",
+    "build:ts": "run -T tsc",
+    "watch": "run -T tsc -w --preserveWatchOutput",
+    "clean": "run -T rimraf ./dist",
+    "prepublishOnly": "yarn clean && yarn build",
+    "lint": "run -T eslint ."
   },
   "dependencies": {
     "lodash": "4.17.21",
-    "winston": "3.3.3"
+    "winston": "3.9.0"
+  },
+  "devDependencies": {
+    "eslint-config-custom": "4.11.4",
+    "tsconfig": "4.11.4"
   },
   "engines": {
     "node": ">=14.19.1 <=18.x.x",
